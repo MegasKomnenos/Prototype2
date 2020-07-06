@@ -1,5 +1,4 @@
 use amethyst::{
-    core::transform::TransformBundle,
     prelude::*,
     renderer::{
         plugins::{RenderFlat2D, RenderToWindow},
@@ -7,12 +6,42 @@ use amethyst::{
         RenderingBundle,
     },
     utils::application_root_dir,
+    input::{InputBundle, StringBindings, InputEvent, VirtualKeyCode},
 };
 
-struct MyState;
+#[derive(Default)]
+struct WaitState {
+    iter: u64,
+}
 
-impl SimpleState for MyState {
-    fn on_start(&mut self, _data: StateData<'_, GameData<'_, '_>>) {}
+impl SimpleState for WaitState {
+    fn handle_event(&mut self, _: StateData<GameData>, event: StateEvent) -> SimpleTrans {
+        if let StateEvent::Input(input_event) = event {
+            if let InputEvent::KeyReleased {key_code, ..} = input_event {
+                if let VirtualKeyCode::Space = key_code {
+                    println!("Iteration {} Beginning", self.iter);
+
+                    return SimpleTrans::Push(Box::new(SimState{iter: self.iter}))
+                }
+            }
+        }
+
+        SimpleTrans::None
+    }
+}
+
+struct SimState {
+    iter: u64
+}
+
+impl SimpleState for SimState {
+    fn update(&mut self, _: &mut StateData<GameData>) -> SimpleTrans {
+        println!("Iteration {} Running", self.iter);
+        println!("Iteration {} Ending", self.iter);
+        self.iter += 1;
+
+        SimpleTrans::Push(Box::new(WaitState{iter: self.iter}))
+    }
 }
 
 fn main() -> amethyst::Result<()> {
@@ -24,6 +53,8 @@ fn main() -> amethyst::Result<()> {
     let config_dir = app_root.join("config");
     let display_config_path = config_dir.join("display.ron");
 
+    let input_bundle = InputBundle::<StringBindings>::new();
+
     let game_data = GameDataBuilder::default()
         .with_bundle(
             RenderingBundle::<DefaultBackend>::new()
@@ -33,9 +64,9 @@ fn main() -> amethyst::Result<()> {
                 )
                 .with_plugin(RenderFlat2D::default()),
         )?
-        .with_bundle(TransformBundle::new())?;
+        .with_bundle(input_bundle)?;
 
-    let mut game = Application::new(assets_dir, MyState, game_data)?;
+    let mut game = Application::new(assets_dir, WaitState::default(), game_data)?;
     game.run();
 
     Ok(())
