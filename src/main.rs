@@ -15,6 +15,10 @@ struct WaitState {
 }
 
 impl SimpleState for WaitState {
+    fn on_resume(&mut self, _data: StateData<GameData>) {
+        self.iter += 1;
+    }
+
     fn handle_event(&mut self, _: StateData<GameData>, event: StateEvent) -> SimpleTrans {
         if let StateEvent::Input(input_event) = event {
             if let InputEvent::KeyReleased {key_code, ..} = input_event {
@@ -38,9 +42,8 @@ impl SimpleState for SimState {
     fn update(&mut self, _: &mut StateData<GameData>) -> SimpleTrans {
         println!("Iteration {} Running", self.iter);
         println!("Iteration {} Ending", self.iter);
-        self.iter += 1;
 
-        SimpleTrans::Push(Box::new(WaitState{iter: self.iter}))
+        SimpleTrans::Pop
     }
 }
 
