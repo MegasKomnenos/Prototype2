@@ -45,14 +45,37 @@ impl PartialEq for BeliefEntry {
 }
 impl Eq for BeliefEntry {}
 
+enum Activity {
+    Production {
+        id: u8,
+        cost_fixed: f32,
+        cost_scale: f32,
+        inputs: Vec<f32>,
+        outputs: Vec<f32>,
+    },
+    Trade {
+        cost_fixed: f32,
+        cost_scale: f32,
+    },
+}
+
 struct Stockpile {
-    goods: HashMap<String, f32>
+    goods: Vec<f32>
 }
 struct Fills {
-    fills: HashMap<String, f32>
+    fills: Vec<f32>
 }
 struct Needs {
-    needs: HashMap<String, f32>
+    needs: Vec<f32>
+}
+struct Keeps {
+    keeps: Vec<f32>
+}
+struct Beliefs {
+    beliefs: Vec<BeliefEntry>
+}
+struct Acts {
+    acts: Vec<Activity>
 }
 
 impl Component for Stockpile {
@@ -64,52 +87,62 @@ impl Component for Fills {
 impl Component for Needs {
     type Storage = DenseVecStorage<Self>;
 }
+impl Component for Keeps {
+    type Storage = DenseVecStorage<Self>;
+}
+impl Component for Beliefs {
+    type Storage = DenseVecStorage<Self>;
+}
+impl Component for Acts {
+    type Storage = DenseVecStorage<Self>;
+}
 
+struct DecaySystem;
 struct ConsumptionSystem;
+struct ActivitySystem;
 
+impl<'a> System<'a> for DecaySystem {
+    type SystemData = (
+        WriteStorage<'a, Keeps>,
+        Read<'a, SimStatus>,
+    );
+
+    fn run(&mut self, (mut keeps, sim_status): Self::SystemData) {
+        match *sim_status {
+            SimStatus::Run => {
+                for keep in (&mut keeps).join() {
+                    for amount in keep.keeps.iter_mut() {
+                        *amount *= 0.5;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
 impl<'a> System<'a> for ConsumptionSystem {
     type SystemData = (
         WriteStorage<'a, Stockpile>,
         WriteStorage<'a, Fills>,
+        WriteStorage<'a, Keeps>,
         ReadStorage<'a, Needs>,
         Read<'a, SimStatus>,
     );
 
-    fn run(&mut self, (mut stockpiles, mut fills, needs, sim_status): Self::SystemData) {
+    fn run(&mut self, (mut stockpiles, mut fills, mut keeps, needs, sim_status): Self::SystemData) {
         match *sim_status {
             SimStatus::Run => {
-                for (stockpile, fill, need) in (&mut stockpiles, &mut fills, &needs).join() {
-                    println!("Consumption Before");
-        
-                    for (name, amount) in stockpile.goods.iter() {
-                        println!("Has {} {}", amount, name);
-                    }
-        
-                    fill.fills.clear();
-        
-                    for (name, amount) in need.needs.iter() {
-                        if let Some(good) = stockpile.goods.get_mut(name) {
-                            if *good / 2. > *amount {
-                                *good -= *amount;
-        
-                                fill.fills.insert(name.clone(), 1.);
-                            } else {
-                                *good /= 2.;
-        
-                                fill.fills.insert(name.clone(), *good / *amount);
-                            }
+                for (stockpile, fill, keep, need) in (&mut stockpiles, &mut fills, &mut keeps, &needs).join() {
+                    for (id, amount) in need.needs.iter().enumerate() {
+                        if stockpile.goods[id] / 2. > *amount {
+                            stockpile.goods[id] -= *amount;
+                            keep.keeps[id] += *amount;
+                            fill.fills[id] = 1.;
                         } else {
-                            fill.fills.insert(name.clone(), 0.);
+                            stockpile.goods[id] /= 2.;
+                            keep.keeps[id] += stockpile.goods[id];
+                            fill.fills[id] = stockpile.goods[id] / *amount;
                         }
-                    }
-        
-                    println!("Consumption After");
-        
-                    for (name, amount) in stockpile.goods.iter() {
-                        println!("Has {} {}", amount, name);
-                    }
-                    for (name, amount) in fill.fills.iter() {
-                        println!("Filled {} {}", amount, name);
                     }
                 }
             }
@@ -134,22 +167,12 @@ impl SimpleState for LoadState {
 
         world.insert(SimStatus::Wait);
 
-        let mut goods = HashMap::new();
-        let mut needs = HashMap::new();
-
-        goods.insert("Wheat".to_string(), 10.);
-        goods.insert("Meat".to_string(), 5.);
-        goods.insert("Water".to_string(), 20.);
-
-        needs.insert("Wheat".to_string(), 1.);
-        needs.insert("Meat".to_string(), 0.5);
-        needs.insert("Water".to_string(), 1.);
-
         world
             .create_entity()
-            .with(Stockpile { goods })
-            .with(Needs { needs })
-            .with(Fills { fills: HashMap::new()})
+            .with(Stockpile { goods: vec![10., 5., 20.] })
+            .with(Needs { needs: vec![1., 0.5, 1.] })
+            .with(Fills { fills: vec![0., 0., 0.] })
+            .with(Keeps { keeps: vec![0., 0., 0.] })
             .build();
     }
 
@@ -158,7 +181,7 @@ impl SimpleState for LoadState {
     }
 }
 impl SimpleState for WaitState {
-    fn on_resume(&mut self, _: StateData<GameData>) {
+    fn on_resume(&mut self, data: StateData<GameData>) {
         self.iter += 1;
     }
 
@@ -216,7 +239,8 @@ fn main() -> amethyst::Result<()> {
                 .with_plugin(RenderFlat2D::default()),
         )?
         .with_bundle(input_bundle)?
-        .with(ConsumptionSystem, "Consumption System", &[]);
+        .with(DecaySystem, "Decay System", &[])
+        .with(ConsumptionSystem, "Consumption System", &["Decay System"]);
 
     let load_state = LoadState {
         defines: defines_dir
