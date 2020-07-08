@@ -24,6 +24,27 @@ impl Default for SimStatus {
     }
 }
 
+enum BeliefEntry {
+    Good {
+        id: u8,
+        id_other: u8,
+        trust: f32,
+        amount: f32,
+    },
+}
+
+impl PartialEq for BeliefEntry {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Self::Good { id, id_other, ..} => match other {
+                Self::Good { id: other_id, id_other: other_id_other, ..} => (id == other_id && id_other == other_id_other) || (id == other_id_other && id_other == other_id),
+                _ => false,
+            },
+        }
+    }
+}
+impl Eq for BeliefEntry {}
+
 struct Stockpile {
     goods: HashMap<String, f32>
 }
