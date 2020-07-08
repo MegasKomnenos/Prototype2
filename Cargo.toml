@@ -6,6 +6,8 @@ edition = "2018"
 
 [dependencies]
 amethyst = "0.15.0"
+serde = { version = "1.0.114", features = ["derive"] }
+ron = "0.6.0"
 
 [features]
 default = ["vulkan"]
